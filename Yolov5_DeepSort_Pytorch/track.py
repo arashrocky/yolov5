@@ -35,14 +35,19 @@ ROOT = FILE.parents[0]  # yolov5 deepsort root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
-count = 0
-data = []
+
+count = 0 # Generating a counter variable "count"
+data = [] # Creating a list to store the ids that have been counted 
+          # so they wouldn't be counted twice with one id when passing the line
+
 def detect(opt):
     out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, project, name, exist_ok= \
         opt.output, opt.source, opt.yolo_model, opt.deep_sort_model, opt.show_vid, opt.save_vid, \
         opt.save_txt, opt.imgsz, opt.evaluate, opt.half, opt.project, opt.name, opt.exist_ok
-    webcam = source == '0' or source.startswith(
-        'rtsp') or source.startswith('http') or source.endswith('.txt')
+    
+    webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
+    print(f'The Webcam value is {webcam}')
+    # exit() "The Webcam value is False"
 
     # initialize deepsort
     cfg = get_config()
@@ -59,6 +64,8 @@ def detect(opt):
 
     # The MOT16 evaluation runs multiple inference streams in parallel, each one writing to
     # its own .txt file. Hence, in that case, the output folder is not restored
+    print(f'evaluate is {evaluate}')
+    # exit() "evaluate is False"
     if not evaluate:
         if os.path.exists(out):
             pass
@@ -87,6 +94,7 @@ def detect(opt):
         show_vid = check_imshow()
 
     # Dataloader
+    print(f'source is {source}')
     if webcam:
         show_vid = check_imshow()
         cudnn.benchmark = True  # set True to speed up constant image size inference
@@ -97,29 +105,55 @@ def detect(opt):
         bs = 1  # batch_size
     vid_path, vid_writer = [None] * bs, [None] * bs
 
+    # a = type(dataset)
+    # print(f'dataset is type{a}')
+    # exit()
+
     # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
 
-    # extract what is in between the last '/' and last '.'
-    txt_file_name = source.split('/')[-1].split('.')[0]
-    txt_path = str(Path(save_dir)) + '/' + txt_file_name + '.txt'
-
+    # # extract what is in between the last '/' and last '.'
+    # txt_file_name = source.split('/')[-1].split('.')[0]
+    # print(f'txt_file_name is {txt_file_name}')
+    # # exit()
+    # txt_path = str(Path(save_dir)) + '/' + txt_file_name + '.txt'
+    # print(f'txt_path is {txt_path}')
+    
+    
     if pt and device.type != 'cpu':
         model(torch.zeros(1, 3, *imgsz).to(device).type_as(next(model.model.parameters())))  # warmup
     dt, seen = [0.0, 0.0, 0.0, 0.0], 0
     for frame_idx, (path, img, im0s, vid_cap, s) in enumerate(dataset):
+        print(f'path for img is {path}')
+        # print(f'vid_cap for img is {type(vid_cap)}')
+        # exit()
+
+        # extract what is in between the last '/' and last '.'
+        txt_file_name = path.split('/')[-1].split('.')[0]
+        print(f'txt_file_name is {txt_file_name}')
+        
+        txt_path = str(Path(save_dir)) + '/' + txt_file_name + '.txt'
+        print(f'txt_path is {txt_path}')
+        # exit()
+    
+        # txt_path = path
+
         t1 = time_sync()
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
+        # print(f'image size before unsqueeze {img.size()}')
+        # img.size(C=3, H, W)
         if img.ndimension() == 3:
             img = img.unsqueeze(0)
+            # print(f'image size after unsqueeze {img.size()}')
+            # img.size(1, C=3, H, W) converting to batch format
         t2 = time_sync()
         dt[0] += t2 - t1
 
         # Inference
         visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if opt.visualize else False
-        pred = model(img, augment=opt.augment, visualize=visualize)
+        pred = model(img, augment=opt.augment, visualize=visualize) #YOLO Detection
         t3 = time_sync()
         dt[1] += t3 - t2
 
@@ -138,10 +172,18 @@ def detect(opt):
 
             p = Path(p)  # to Path
             save_path = str(save_dir / p.name)  # im.jpg, vid.mp4, ...
+            print(f'save_path is {save_path}') 
+            # save_path is runs/track/exp1/000000.jpg
+            # exit()
+            # print(f'size of img is {img.size()}')
+            # size of img is torch.Size([1, 3, 288, 480])
             s += '%gx%g ' % img.shape[2:]  # print string
-
+            
             annotator = Annotator(im0, line_width=2, pil=not ascii)
-            w, h = im0.shape[1],im0.shape[0]
+
+            w, h = im0.shape[1],im0.shape[0] #determining dimensions of image im0
+                                             #for locating "line" in each frame
+            
             if det is not None and len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(
@@ -169,12 +211,15 @@ def detect(opt):
                         bboxes = output[0:4]
                         id = output[4]
                         cls = output[5]
-                        #count
+                        #count the number of objects that has passed the defined line 
+                        #in the each frame im0
                         count_obj(bboxes,w,h,id)
                         c = int(cls)  # integer class
                         label = f'{id} {names[c]} {conf:.2f}'
                         annotator.box_label(bboxes, label, color=colors(c, True))
 
+                        # print(f'save_txt is {save_txt}') #save_txt is only "True" if an object is detected
+                        # print(f'txt_path is {txt_path}') # txt_path is runs/track/exp/Assessed_Image_Number.txt (like 0000.txt. 0001.txt)
                         if save_txt:
                             # to MOT format
                             bbox_left = output[0]
@@ -188,6 +233,8 @@ def detect(opt):
 
                 LOGGER.info(f'{s}Done. YOLO:({t3 - t2:.3f}s), DeepSort:({t5 - t4:.3f}s)')
 
+                # input() #Pausing the Loop until clicking Enter
+
             else:
                 deepsort.increment_ages()
                 LOGGER.info('No detections')
@@ -195,17 +242,21 @@ def detect(opt):
             # Stream results
             im0 = annotator.result()
             if show_vid:
+                
+                #Drawing the line on each frame
                 global count
                 color=(0,255,0)
                 start_point = (0, h-350)
                 end_point = (w, h-350)
                 cv2.line(im0, start_point, end_point, color, thickness=2)
+                #Drawing the count value on each frame at location "org"
                 thickness = 3
                 org = (150, 150)
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 fontScale = 3
                 cv2.putText(im0, str(count), org, font, 
                    fontScale, color, thickness, cv2.LINE_AA)
+                
                 cv2.imshow(str(p), im0)
                 if cv2.waitKey(1) == ord('q'):  # q to quit
                     raise StopIteration
@@ -213,7 +264,7 @@ def detect(opt):
             # Save results (image with detections)
             if save_vid:
                 if vid_path != save_path:  # new video
-                    vid_path = save_path
+                    vid_path = save_path  # save_path is runs/track/exp1/000000.jpg for image 000000.jpg
                     if isinstance(vid_writer, cv2.VideoWriter):
                         vid_writer.release()  # release previous video writer
                     if vid_cap:  # video
@@ -223,8 +274,13 @@ def detect(opt):
                     else:  # stream
                         fps, w, h = 30, im0.shape[1], im0.shape[0]
 
-                    vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                vid_writer.write(im0)
+                    # vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                    # vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (w, h))
+                    # vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'MJPG'), fps, (w, h))                  
+                # vid_writer.write(im0)
+                cv2.imwrite(save_path, im0)
+
+            # input() #Pausing the Loop until clicking Enter    
 
     # Print results
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
@@ -235,8 +291,11 @@ def detect(opt):
         if platform == 'darwin':  # MacOS
             os.system('open ' + save_path)
 
+
+
 def count_obj(box,w,h,id):
     global count,data
+    #center coordinates of each detected object in each frame
     center_coordinates = (int(box[0]+(box[2]-box[0])/2) , int(box[1]+(box[3]-box[1])/2))
     if int(box[1]+(box[3]-box[1])/2) > (h -350):
         if  id not in data:
@@ -248,17 +307,24 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--yolo_model', nargs='+', type=str, default='yolov5n.pt', help='model.pt path(s)')
     parser.add_argument('--deep_sort_model', type=str, default='osnet_x0_25')
-    parser.add_argument('--source', type=str, default='videos/Traffic.mp4', help='source')  # file/folder, 0 for webcam
+    # parser.add_argument('--source', type=str, default='videos/Traffic.mp4', help='source')  # file/folder, 0 for webcam
+    # parser.add_argument('--source', type=str, default='/home/arash/Datasets/DoTA/DoTA_dataset/'\
+    #                     'mnt/workspace/datasets/DoTA_dataset/frames/0qfbmt4G8Rw_000072/images/', help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--source', type=str, default='/data/arash/Datasets/DoTA/DoTA_dataset/'\
+                        'mnt/workspace/datasets/DoTA_dataset/frames/0qfbmt4G8Rw_000072/images/', help='source')  # file/folder, 0 for webcam
+    
     parser.add_argument('--output', type=str, default='inference/output', help='output folder')  # output folder
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[480], help='inference size h,w')
     parser.add_argument('--conf-thres', type=float, default=0.5, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
-    parser.add_argument('--fourcc', type=str, default='mp4v', help='output video codec (verify ffmpeg support)')
-    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--show-vid', action='store_false', help='display tracking video results')
-    parser.add_argument('--save-vid', action='store_true', help='save video tracking results')
-    parser.add_argument('--save-txt', action='store_true', help='save MOT compliant results to *.txt')
-    # class 0 is person, 1 is bycicle, 2 is car... 79 is oven
+    # parser.add_argument('--fourcc', type=str, default='mp4v', help='output video codec (verify ffmpeg support)')
+    parser.add_argument('--fourcc', type=str, default='jpg', help='output video codec (verify ffmpeg support)')
+    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu') # for GPU N0.=0, device = 0
+    parser.add_argument('--show-vid', default=False, action='store_false', help='display tracking video results')
+    parser.add_argument('--save-vid', default=True, action='store_true', help='save video tracking results')
+    # parser.add_argument('--save-txt', action='store_true', help='save MOT compliant results to *.txt')
+    parser.add_argument('--save-txt', default=True, action='store_true', help='save MOT compliant results to *.txt')
+    # class 0 is person, 1 is bycicle, 2 is car... 79 is oven (Based on COCO dataset)
     parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 16 17')
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
